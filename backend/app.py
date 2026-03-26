@@ -37,13 +37,14 @@ async def lifespan(app):
                         header=0,
                         names=['#', 'name', 'primary type', 'secondary type', 'total', 'hp', 'attack', 'defense', 'special attack', 'special defense', 'speed', 'generation', 'legendary'],
                     )
-                    .drop('#', axis='columns')
+                    .rename(columns={'#': 'pokedex_id'})
                     .assign(
                         name=lambda df: df['name'].str.casefold()
                     )
                     .astype({
                         'primary type': 'category',
                         'secondary type': 'category',
+                        'pokedex_id': 'Int64',
                         'total': 'Int64',
                         'hp': 'Int64',
                         'attack': 'Int64',
@@ -75,7 +76,12 @@ class Monster(BaseModel):
 
 @app.get('/names')
 async def names(request : Request):
-    return {'status': True, 'names': [*request.state.db.info.index]}
+    info = request.state.db.info
+    return {
+        'status': True,
+        'names': [*info.index],
+        'ids': info['pokedex_id'].to_dict(),
+    }
 
 @app.get('/info/{name}')
 async def info(name : str, request : Request):
