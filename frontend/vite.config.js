@@ -3,13 +3,15 @@ import babel from 'vite-plugin-babel'
 import { viteRequire } from 'vite-require'
 import { IgnorePublicPlugin } from 'vite-plugin-ignore-public'
 
+const backendPort = process.env.BACKEND_PORT || 8000
+
 export default defineConfig({
     publicDir: 'public',
     server: {
         allowedHosts: true,
         proxy: {
             '/api': {
-                target: 'http://localhost:8000',
+                target: `http://localhost:${backendPort}`,
                 changeOrigin: true,
                 rewrite: (path) => path.replace(/^\/api/, ''),
             }

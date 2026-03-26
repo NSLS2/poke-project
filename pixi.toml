@@ -6,9 +6,9 @@ platforms = ["linux-64"]
 version = "0.1.0"
 
 [tasks]
-backend = { cmd = "uvicorn app:app", cwd = "backend" }
+backend = { cmd = "uvicorn app:app --port ${BACKEND_PORT:-8000}", cwd = "backend" }
 frontend-install = { cmd = "npm install", cwd = "frontend/" }
-frontend = { cmd = "npm run serve", depends-on = ["frontend-install"], cwd = "frontend/" }
+frontend = { cmd = "npm run serve -- --port ${FRONTEND_PORT:-8080}", depends-on = ["frontend-install"], cwd = "frontend/" }
 app = { cmd = "bash app.sh", depends-on = ["frontend-install"]}
 
 [dependencies]

@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "serve": "vite serve --host 0.0.0.0 --port 8080 --debug --logLevel info --config vite.config.js src"
+    "serve": "vite serve --host 0.0.0.0 --debug --logLevel info --config vite.config.js src"
   },
   "dependencies": {
     "@b9g/crank": "^0.7.8",

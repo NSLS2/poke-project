@@ -118,4 +118,6 @@ async def caught(request : Request):
         }
 
 if __name__ == '__main__':
-    run(app)
+    import os
+    port = int(os.environ.get('BACKEND_PORT', 8000))
+    run(app, port=port)
