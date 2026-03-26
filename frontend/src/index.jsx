@@ -32,7 +32,12 @@ function Listing({ monsters }) {
 }
 
 async function *Catcher() {
-    let monsters = Map()
+    let monsters = do {
+        try {
+            const { data : { caught } } = await axios.get('/api/caught')
+            fromJS(caught)
+        } catch(e) { Map() }
+    }
     let selected;
     let infoBox = <i>Select a Pokémon</i>
 

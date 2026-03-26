@@ -2,7 +2,7 @@
 authors = ["Cameron Riddell <cameron@dutc.io>"]
 channels = ["conda-forge"]
 name = "project"
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64"]
 version = "0.1.0"
 
 [tasks]
