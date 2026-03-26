@@ -9,16 +9,90 @@ from textwrap import dedent
 from time import sleep as tm_sleep, perf_counter
 
 from aiosqlite import connect
-from fastapi import FastAPI, Request
-from pandas import read_csv, NA
+from fastapi import FastAPI, Request, Query
+from pandas import read_csv, isna, NA
 from pydantic import BaseModel
 from uvicorn import run
 
 curr_dir = Path(__file__).parent
 data_dir = curr_dir / '..' / 'data'
-Database = namedtuple('Database', 'game info')
+Database = namedtuple('Database', 'game info pokedex')
+
+def _load_info():
+    return (
+        read_csv(
+            data_dir / 'data.csv',
+            header=0,
+            names=['#', 'name', 'primary type', 'secondary type', 'total', 'hp', 'attack', 'defense', 'special attack', 'special defense', 'speed', 'generation', 'legendary'],
+        )
+        .drop('#', axis='columns')
+        .assign(name=lambda df: df['name'].str.casefold())
+        .astype({
+            'primary type': 'category',
+            'secondary type': 'category',
+            'total': 'Int64',
+            'hp': 'Int64',
+            'attack': 'Int64',
+            'defense': 'Int64',
+            'special attack': 'Int64',
+            'special defense': 'Int64',
+            'speed': 'Int64',
+            'generation': 'category',
+            'legendary': 'bool',
+        })
+        .loc[
+            lambda df: (df['generation'].astype(int) <= 4)
+            & (df['name'].str.split().str.len() == 1)
+        ]
+        .set_index('name')
+        # .sort_index()
+    )
+
+async def _build_pokedex(pokedex, info):
+    await pokedex.executescript(dedent('''
+        DROP TABLE IF EXISTS pokemon_fts;
+        DROP TABLE IF EXISTS pokemon;
+        CREATE TABLE pokemon (
+            name         TEXT PRIMARY KEY,
+            primary_type TEXT,
+            secondary_type TEXT,
+            total        INTEGER,
+            hp           INTEGER,
+            attack       INTEGER,
+            defense      INTEGER,
+            special_attack  INTEGER,
+            special_defense INTEGER,
+            speed        INTEGER,
+            generation   INTEGER,
+            legendary    INTEGER
+        );
+        CREATE VIRTUAL TABLE pokemon_fts
+            USING fts5(name, content='pokemon', content_rowid='rowid');
+    '''))
+    rows = [
+        (
+            name,
+            str(row['primary type']),
+            None if isna(row['secondary type']) else str(row['secondary type']),
+            int(row['total']),
+            int(row['hp']),
+            int(row['attack']),
+            int(row['defense']),
+            int(row['special attack']),
+            int(row['special defense']),
+            int(row['speed']),
+            int(row['generation']),
+            int(row['legendary']),
+        )
+        for name, row in info.iterrows()
+    ]
+    await pokedex.executemany('INSERT INTO pokemon VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', rows)
+    await pokedex.execute("INSERT INTO pokemon_fts(pokemon_fts) VALUES('rebuild')")
+    await pokedex.commit()
+
 @asynccontextmanager
 async def lifespan(app):
+    info = _load_info()
     async with connect(curr_dir / 'game.etilqs') as game:
         await game.execute(dedent('''
             create table if not exists caught (
@@ -27,42 +101,12 @@ async def lifespan(app):
             )
         '''))
         await game.commit()
-        yield {
-            'start': perf_counter(),
-            'db': Database(
-                game=game,
-                info=
-                    read_csv(
-                        data_dir / 'data.csv',
-                        header=0,
-                        names=['#', 'name', 'primary type', 'secondary type', 'total', 'hp', 'attack', 'defense', 'special attack', 'special defense', 'speed', 'generation', 'legendary'],
-                    )
-                    .drop('#', axis='columns')
-                    .assign(
-                        name=lambda df: df['name'].str.casefold()
-                    )
-                    .astype({
-                        'primary type': 'category',
-                        'secondary type': 'category',
-                        'total': 'Int64',
-                        'hp': 'Int64',
-                        'attack': 'Int64',
-                        'defense': 'Int64',
-                        'special attack': 'Int64',
-                        'special defense': 'Int64',
-                        'speed': 'Int64',
-                        'generation': 'category',
-                        'legendary': 'bool',
-                    })
-                    .loc[
-                        lambda df: (df['generation'] == 1)
-                        & (df['name'].str.split().str.len() == 1)
-                    ]
-                    .set_index('name')
-                    # .sort_index()
-                    ,
-            ),
-        }
+        async with connect(curr_dir / 'pokedex.etilqs') as pokedex:
+            await _build_pokedex(pokedex, info)
+            yield {
+                'start': perf_counter(),
+                'db': Database(game=game, info=info, pokedex=pokedex),
+            }
 
 app = FastAPI(lifespan=lifespan)
 
@@ -101,6 +145,18 @@ async def catch(monster : Monster, request : Request):
         '''), {'name': monster.name.casefold()})
         await request.state.db.game.commit()
     return {'status': True}
+
+@app.get('/search')
+async def search(request: Request, q: str = Query(default='')):
+    if not q:
+        return {'status': True, 'results': []}
+    async with request.state.db.pokedex.cursor() as cur:
+        await cur.execute(
+            "SELECT name FROM pokemon_fts WHERE name MATCH ? ORDER BY rank LIMIT 10",
+            (f'{q.casefold()}*',),
+        )
+        results = [row[0] async for row in cur]
+    return {'status': True, 'results': results}
 
 @app.get('/caught')
 async def caught(request : Request):

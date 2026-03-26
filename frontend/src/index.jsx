@@ -2,6 +2,11 @@ import { renderer } from '@b9g/crank/dom'
 import axios from 'axios'
 import { fromJS, Map } from 'immutable'
 
+function debounce(fn, delay) {
+    let timer
+    return function(...args) { clearTimeout(timer); timer = setTimeout(() => fn.apply(this, args), delay) }
+}
+
 function Listing({ monsters }) {
     const rows = do {
         monsters.entrySeq().map(([k, v]) => <tr>
@@ -32,9 +37,15 @@ function Listing({ monsters }) {
 }
 
 async function *Catcher() {
-    let monsters = Map()
+    let monsters = do {
+        try {
+            const { data : { caught } } = await axios.get(`/api/caught`)
+            fromJS(caught)
+        } catch(e) { console.log({ e }); Map() }
+    }
     let selected;
     let infoBox = <i>Select a Pokémon</i>
+    let suggestions = []
 
     const options = do {
         try {
@@ -68,6 +79,22 @@ async function *Catcher() {
         </>
         this.refresh()
     }
+    const onSearch = debounce(async function(value) {
+        if (!value) {
+            suggestions = []
+            this.refresh()
+            return
+        }
+        try {
+            const { data : { results } } = await axios.get(`/api/search?q=${encodeURIComponent(value)}`)
+            suggestions = results
+            this.refresh()
+            if (results.includes(value.toLowerCase())) {
+                selected.value = value.toLowerCase()
+                await onChange.call(this, { target: { value: value.toLowerCase() } })
+            }
+        } catch(e) { console.log({ e }) }
+    }, 300)
     async function onClick() {
         await axios.put(`/api/catch`, { name: selected.value })
         monsters = do {
@@ -80,7 +107,7 @@ async function *Catcher() {
     for ({} of this)
         yield <>
             <style>{`
-                select#catcher, button#catcher {
+                input#search, select#catcher, button#catcher {
                     min-width: 50%;
                 }
                 table#listing th, table#listing td {
@@ -89,6 +116,16 @@ async function *Catcher() {
             `}</style>
             <Listing monsters={ monsters } />
             <h2>Catch a Pokémon</h2>
+            <input
+                id="search"
+                type="text"
+                placeholder="Search Pokémon…"
+                list="search-suggestions"
+                onInput={ e => onSearch.call(this, e.target.value) }
+            />
+            <datalist id="search-suggestions">
+                { suggestions.map(name => <option key={ name } value={ name } />) }
+            </datalist>
             <select
                 id="catcher"
                 onChange={ onChange.bind(this) }
