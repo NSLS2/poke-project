@@ -119,5 +119,6 @@ async def caught(request : Request):
 
 if __name__ == '__main__':
     import os
+    interface = os.environ.get('BACKEND_INTERFACE', '127.0.0.1')
     port = int(os.environ.get('BACKEND_PORT', 8000))
-    run(app, port=port)
+    run(app, host=interface, port=port)
