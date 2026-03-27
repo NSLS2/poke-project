@@ -2,9 +2,13 @@ import { renderer } from '@b9g/crank/dom'
 import axios from 'axios'
 import { fromJS, Map } from 'immutable'
 
-function Listing({ monsters }) {
+const spriteUrl = (id) =>
+    `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`
+
+function Listing({ monsters, ids }) {
     const rows = do {
         monsters.entrySeq().map(([k, v]) => <tr>
+            <td>{ ids.has(k) ? <img src={ spriteUrl(ids.get(k)) } alt={ k } width="40" height="40" /> : null }</td>
             <td>{ k }</td>
             <td>{ v }</td>
         </tr>)
@@ -15,13 +19,19 @@ function Listing({ monsters }) {
                 border-bottom: 1px solid black;
             }
             table#listing th, table#listing td {
-                text-align: center
+                text-align: center;
+                vertical-align: middle;
+            }
+            table#listing img {
+                display: block;
+                margin: 0 auto;
             }
         `}</style>
         <h2>Current Pokémon</h2>
         <table id="listing">
             <thead>
                 <tr>
+                    <th></th>
                     <th>Name</th>
                     <th>Count</th>
                 </tr>
@@ -32,13 +42,20 @@ function Listing({ monsters }) {
 }
 
 async function *Catcher() {
-    let monsters = Map()
+    let monsters = do {
+        try {
+            const { data : { caught } } = await axios.get('/api/caught')
+            fromJS(caught)
+        } catch(e) { Map() }
+    }
+    let ids = Map()
     let selected;
     let infoBox = <i>Select a Pokémon</i>
 
     const options = do {
         try {
-            const { data : { names } } = await axios.get('/api/names')
+            const { data : { names, ids: idsData } } = await axios.get('/api/names')
+            ids = fromJS(idsData)
             fromJS(names).map(x => <option key={ x } value={ x }>{ x }</option>)
         } catch(e) { console.log({ e }) }
     }
@@ -87,7 +104,7 @@ async function *Catcher() {
                     text-align: center
                 }
             `}</style>
-            <Listing monsters={ monsters } />
+            <Listing monsters={ monsters } ids={ ids } />
             <h2>Catch a Pokémon</h2>
             <select
                 id="catcher"
